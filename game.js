@@ -18,7 +18,7 @@ class Vector {
     }
 
     revert () {
-        return new Vector(-this.x, -this.y);
+        return this.times(-1);
     }
 }
 
@@ -72,111 +72,115 @@ class Actor {
     }
 }
 
-class Level {
-    constructor (grid = [], actors = []) {
-        if (!Array.isArray(grid) || !Array.isArray(actors)){
-            throw (new Error('Параметры должны быть массивами'));
+const Level = (function() { 
+    const _width = Symbol();
+    const _player = Symbol();
+
+    class Level {
+        constructor (grid = [], actors = []) {
+            if (!Array.isArray(grid) || !Array.isArray(actors)){
+                throw (new Error('Параметры должны быть массивами'));
+            }
+
+            this.grid = grid.slice();
+            this.actors = actors.slice();
+            this.status = null;
+            this.finishDelay = 1;
+
+            this[_width] = this.grid.reduce((max, cur) => cur.length > max ? cur.length : max, 0);
+            this[_player] = this.actors.find(obj => obj.type === "player");
         }
 
-        this.grid = grid.slice();
-        this.actors = actors.slice();
-        this.status = null;
-        this.finishDelay = 1;
-
-        this._width = Symbol('width');
-        this[this._width] = this.grid.reduce((max, cur) => cur.length > max ? cur.length : max, 0);
-    }
-
-    get player () {
-        return this.actors.find(obj => {return obj.type === "player"});
-    }
-
-    get width () {
-        return this[this._width];
-    }
-
-    get height () {
-        return this.grid.length;
-    }
-
-    isFinished () {
-        return this.status !== null && this.finishDelay <= 0;
-    }
-
-    actorAt (actor) {
-        if (!(actor instanceof Actor)) {
-            throw (new Error('Параметр должен быть типа Actor'));
-        }
-        return this.actors.find(obj => actor.isIntersect(obj));
-    }
-
-    obstacleAt (pos, size) {
-        if (!(pos instanceof Vector) || 
-            !(size instanceof Vector)) {
-            throw (new Error('Все параметры должны быть типа Vector'));
-        }
-        const minX = Math.min(pos.x, pos.x + size.x);
-        const maxX = Math.max(pos.x, pos.x + size.x);
-        const minY = Math.min(pos.y, pos.y + size.y);
-        const maxY = Math.max(pos.y, pos.y + size.y);
-
-        if (maxX > this.width ||
-            minX < 0 ||
-            minY < 0) {
-            return 'wall';
-        }
-        if (maxY > this.height) {
-            return 'lava';
+        get player () {
+            return this[_player];
         }
 
-        for (let x = Math.floor(minX); x <= Math.floor(maxX); x++) {
-            for (let y = Math.floor(minY); y <= Math.floor(maxY); y++) {
-                const cur = this.grid[y][x];
-                if (cur) {
-                    if (cur === 'wall' && 
-                        (x === maxX || y === maxY)){
-                        continue;
+        get width () {
+            return this[_width];
+        }
+
+        get height () {
+            return this.grid.length;
+        }
+
+        isFinished () {
+            return this.status !== null && this.finishDelay <= 0;
+        }
+
+        actorAt (actor) {
+            if (!(actor instanceof Actor)) {
+                throw (new Error('Параметр должен быть типа Actor'));
+            }
+            return this.actors.find(obj => actor.isIntersect(obj));
+        }
+
+        obstacleAt (pos, size) {
+            if (!(pos instanceof Vector) || 
+                !(size instanceof Vector)) {
+                throw (new Error('Все параметры должны быть типа Vector'));
+            }
+            
+            const left = Math.floor(pos.x);
+            const right = Math.ceil(pos.x + size.x);
+            const top = Math.floor(pos.y);
+            const bottom = Math.ceil(pos.y + size.y);
+
+            if (right > this.width ||
+                left < 0 ||
+                top < 0) {
+                return 'wall';
+            }
+            if (bottom > this.height) {
+                return 'lava';
+            }
+
+            for (let x = left; x < right; x++) {
+                for (let y = top; y < bottom; y++) {
+                    const cur = this.grid[y][x];
+                    if (cur) {
+                        return cur;
                     }
-                    return cur;
+                }
+            }
+        }
+
+        removeActor (actor) {
+            if (!(actor instanceof Actor)) {
+                throw (new Error('Параметр должен быть типа Actor'));
+            }
+            const index = this.actors.indexOf(actor);
+            if (index > -1) {
+                this.actors.splice(index, 1);
+            }
+        }
+
+        noMoreActors (type) {
+            return !this.actors.some(obj => obj.type === type);
+        }
+
+        playerTouched (type, actor) {
+            if (!(actor === undefined) && !(actor instanceof Actor)) {
+                throw (new Error('Второй параметр должен быть не задан или иметь тип Actor'));
+            }
+            if (this.status === null) {
+                if (type === 'lava' || type === 'fireball') {
+                    this.status = 'lost';
+                }
+                if (type === 'coin') {
+                    this.removeActor(actor);
+                    if (this.noMoreActors('coin')) {
+                        this.status = 'won';
+                    }
                 }
             }
         }
     }
 
-    removeActor (actor) {
-        if (!(actor instanceof Actor)) {
-            throw (new Error('Параметр должен быть типа Actor'));
-        }
-        const index = this.actors.indexOf(actor);
-        if (index > -1) {
-            this.actors.splice(index, 1);
-        }
-    }
-
-    noMoreActors (type) {
-        return !this.actors.some(obj => obj.type === type);
-    }
-
-    playerTouched (type, actor) {
-        if (!(actor === undefined) && !(actor instanceof Actor)) {
-            throw (new Error('Второй параметр должен быть не задан или иметь тип Actor'));
-        }
-        if (this.status === null) {
-            if (type === 'lava' || type === 'fireball') {
-                this.status = 'lost';
-            }
-            if (type === 'coin') {
-                this.removeActor(actor);
-                if (this.noMoreActors('coin')) {
-                    this.status = 'won';
-                }
-            }
-        }
-    }
-}
+    return Level;
+})();
 
 class LevelParser {
-    constructor (actorsDict = new Object()) {
+    constructor (actorsDict = {}) {
         this.actorsDict = actorsDict;
         this.symbols = {
             'x': 'wall',
@@ -193,20 +197,15 @@ class LevelParser {
     }
 
     createGrid (strings) {
-        return strings.map(line => line.split('').map(symbol => {
-                if (!this.actorFromSymbol(symbol)) {
-                    return this.obstacleFromSymbol(symbol);
-                }
-            }
-        ));
+        return strings.map(line => line.split('').map(symbol => this.obstacleFromSymbol(symbol)));
     }
 
     createActors (strings) {
         const result = [];
         strings.forEach((string, stringNumber) => string.split('').forEach((symbol, symbolNumber) => {
             const className = this.actorFromSymbol(symbol);
-            if (className && typeof className === 'function') {
-                let newObject = new className(new Vector(symbolNumber, stringNumber));
+            if (typeof className === 'function') {
+                const newObject = new className(new Vector(symbolNumber, stringNumber));
                 if (newObject instanceof Actor) {
                     result.push(newObject);
                 }
